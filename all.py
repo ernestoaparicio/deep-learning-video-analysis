@@ -33,10 +33,8 @@ object_detection_model = hub.load(object_detection_model_handle).signatures['ser
 
 def get_categorized_comments(video_id):
     # Fetch and categorize comments for each video
-    print(f"Categorized comments for video {video_id}:")
-    categorized_comments = get_video_comments_with_categories(video_id)
-    for comment, category in categorized_comments:
-        print(f"Comment: {comment}\nCategory: {category}\n")
+    return get_video_comments_with_categories(video_id)
+    
 
 # Function to get video metadata
 def get_video_metadata(video_id):
@@ -44,13 +42,7 @@ def get_video_metadata(video_id):
     response = request.execute()
 
     if response['items']:
-        item = response['items'][0]
-        print(f"item {item}")
-        return {
-            'playlist_id': item['snippet'].get('playlistId', 'NA'),
-            'title': item['snippet']['title'],
-            'duration': item['contentDetails']['duration']
-        }
+        return response['items'][0]
     else:
         return None
 
@@ -363,11 +355,24 @@ def analyze_youtube_video(video_id):
 
     # Step 5: Compile all results into a structured format
     results = {
-        'Playlist ID': metadata['playlist_id'],
-        'Video ID': video_id,
-        'Video Title': metadata['title'],
-        'Total Duration': metadata['duration'],
-        # ... include results from video processing and comment analysis ...
+        'Playlist ID': metadata['snippet'].get('channelTitle', 'NA'),
+        'Video ID': metadata.get('id', 'NA'),
+        'Video Title': metadata['snippet'].get('title', 'NA'),
+        'Total Duration': metadata['contentDetails'].get('duration', 'NA'),
+        'Number of Segments': 'NA',
+        'Number of Keyframes': 'NA',
+        'Timing of each keyframe': 'NA',
+        'Instructor Presence': 'NA',
+        'The total time when the instructor is present (mm:ss)':'NA',
+        'Body movement (Y/N)':'NA',
+        'Use of Slides (mm:ss)':'NA', 
+        'Use of Blackboard (mm:ss)': 'NA',
+        'Average fraction of text on slides':'NA',
+        'total slide area':'NA',
+        'Number of Total Comments':'NA', 
+        'Number of Positive comments':'NA', 
+        'Number of Negative comments':'NA', 
+        'Number of questions':'NA'
     }
     return results
 
