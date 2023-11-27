@@ -54,6 +54,8 @@ def download_youtube_video(video_id):
         yt = YouTube(f'https://www.youtube.com/watch?v={video_id}')
         video_stream = yt.streams.filter(file_extension='mp4').first()
         video_stream.download(filename=filename)
+    else:
+        print(f"{filename} already exists. Skipping processing.")
 
     return filename
 
@@ -177,7 +179,7 @@ def get_video_comments_with_categories(video_id):
     return categorized_comments
     
 
-def analyze_video(video_folder):
+def analyze_video_for_text(video_folder):
     blackboard, powerpoint, neither, total_frames, avg_text_density = process_video_segments(video_folder)
 
     if total_frames > 0:
@@ -287,21 +289,34 @@ def process_video_segments(segment_folder):
 
     return instructor_presence_count, total_frames, full_screen_count, pip_count
 
-def analyze_video(video_folder):
+def analyze_video_for_instructor(video_folder, sampling_rate):
     instructor_presence, total_frames, full_screen, pip = process_video_segments(video_folder)
 
     if total_frames > 0:
         fraction_visible = instructor_presence / total_frames
         fraction_full_screen = full_screen / total_frames
         fraction_pip = pip / total_frames
-        print(f"Instructor Visibility Fraction in {video_folder}: {fraction_visible}")
-        print(f"Fraction of Full-Screen Presence: {fraction_full_screen}")
-        print(f"Fraction of PIP Presence: {fraction_pip}")
+
+        # Calculate total time in seconds
+        total_time_seconds = instructor_presence * sampling_rate
+        # Convert to mm:ss format
+        minutes, seconds = divmod(total_time_seconds, 60)
+        total_time_present = f"{int(minutes):02d}:{int(seconds):02d}"
     else:
-        print(f"No frames to analyze in {video_folder}")
+        total_time_present = "00:00"
+
+    return {
+        'instructor_presence': instructor_presence,
+        'fraction_visible': fraction_visible,
+        'sampling_rate': sampling_rate,
+        'total_time_present': total_time_present
+    }
+
 
 def process_video_for_keyframes(video_path, sampling_rate):
+    sampling_rate = sampling_rate  # sampling_rate in seconds
     cap = cv2.VideoCapture(video_path)
+    keyframe_folder_new = True
 
     # Check if video opened successfully
     if not cap.isOpened():
@@ -316,25 +331,40 @@ def process_video_for_keyframes(video_path, sampling_rate):
 
     frame_count = 0
     keyframe_count = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
 
-        if frame_count % sampling_interval == 0:
-            # Folder for keyframes
-            base_folder = os.path.splitext(os.path.basename(video_path))[0]
-            keyframe_folder = f'keyframes/{base_folder}'
-            os.makedirs(keyframe_folder, exist_ok=True)
+    # Folder for keyframes
+    base_folder = os.path.splitext(os.path.basename(video_path))[0]
+    keyframe_folder = f'keyframes/{base_folder}'
 
-            # Save keyframe
-            keyframe_file = f'{keyframe_folder}/keyframe_{keyframe_count}.jpg'
-            cv2.imwrite(keyframe_file, frame)
-            keyframe_count += 1
+    # Check if the keyframe folder already exists
+    if os.path.exists(keyframe_folder):
+        print(f"Keyframe folder {keyframe_folder} already exists. Skipping processing.")
+        keyframe_folder_new = True
 
-        frame_count += 1
+    if keyframe_folder_new:
+        os.makedirs(keyframe_folder, exist_ok=True)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-    cap.release()
+            if frame_count % sampling_interval == 0:
+                # Save keyframe
+                keyframe_file = f'{keyframe_folder}/keyframe_{keyframe_count}.jpg'
+                cv2.imwrite(keyframe_file, frame)
+                keyframe_count += 1
+
+            frame_count += 1
+        cap.release()
+
+    keyframe_data = {
+        'frame_count': frame_count,
+        'keyframe_count': keyframe_count,
+        'frame_rate': frame_rate,
+        'sampling_interval': sampling_interval,
+        'sample_rate': sampling_rate
+    }
+    return keyframe_data
 
 
 
@@ -347,8 +377,8 @@ def analyze_youtube_video(video_id):
     metadata = get_video_metadata(video_id)  # Implement this function using YouTube API
 
     # Step 3: Process the video for keyframes and other analyses
-    #process_video_for_keyframes(video_path, sampling_rate=1)
-    # ... call other processing functions and store their results ...
+    keyframe_data = process_video_for_keyframes(video_path, sampling_rate=1)
+    instructor_presence_data = analyze_video_for_instructor('keyframes/' + video_id, 1)
 
     # Step 4: Fetch and categorize comments
     categorized_comments = get_categorized_comments(video_id)  # Implement using YouTube API and TextBlob
@@ -359,11 +389,11 @@ def analyze_youtube_video(video_id):
         'Video ID': metadata.get('id', 'NA'),
         'Video Title': metadata['snippet'].get('title', 'NA'),
         'Total Duration': metadata['contentDetails'].get('duration', 'NA'),
-        'Number of Segments': 'NA',
-        'Number of Keyframes': 'NA',
-        'Timing of each keyframe': 'NA',
-        'Instructor Presence': 'NA',
-        'The total time when the instructor is present (mm:ss)':'NA',
+        'Number of Segments': keyframe_data.get('frame_count', 'NA'),
+        'Number of Keyframes': keyframe_data.get('keyframe_count', 'NA'),
+        'Timing of each keyframe': keyframe_data.get('sampling_rate', 'NA'),
+        'Instructor Presence': instructor_presence_data.get('fraction_visible', 'NA'),
+        'The total time when the instructor is present (mm:ss)': instructor_presence_data.get('total_time_present', 'NA'),
         'Body movement (Y/N)':'NA',
         'Use of Slides (mm:ss)':'NA', 
         'Use of Blackboard (mm:ss)': 'NA',
