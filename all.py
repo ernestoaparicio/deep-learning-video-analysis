@@ -20,7 +20,8 @@ import json
 youtube = build('youtube', 'v3', developerKey='AIzaSyD1FMUZtNeJdcdD9ddmyoV0UMDDFuuTqrM')
 
 # Facial Emotion Recognition Model Setup
-facial_recognition_model = get_base_model((100, 100, 3))
+facial_IMG_SHAPE = (100, 100, 3)
+facial_recognition_model = get_base_model(facial_IMG_SHAPE)
 facial_recognition_model.add(tf.keras.layers.Dense(7, activation='softmax', name="softmax"))
 
 facial_recognition_model_name = 'FERplus_0124-1040_weights.h5'
@@ -196,11 +197,11 @@ def analyze_video_for_text(video_folder):
 
 def analyze_facial_expression(frame):
     img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    x = cv2.resize(img, dsize=IMG_SHAPE[:-1])
+    x = cv2.resize(img, dsize=facial_IMG_SHAPE[:-1])
     x = np.expand_dims(x, axis=0)
     x = preprocess_fer(x)
 
-    output = model.predict(x)
+    output = facial_recognition_model.predict(x)
     label = get_labels_fer(output)[0]
     confidence = np.argmax(output[0])
 
@@ -226,14 +227,25 @@ def process_keyframes(keyframe_folder):
 
     return expression_counts
 
-def analyze_videos(video_folders):
+def analyze_videos_for_facial_expressions(video_folders):
+    all_expression_percentages = {}
+
     for video_folder in video_folders:
         print(f"Analyzing keyframes in {video_folder}")
         expression_percentages = process_keyframes(video_folder)
         print(f"Facial Expression Percentages for {video_folder}:")
+
+        video_expression_data = {}
         for expression, percentage in expression_percentages.items():
-            print(f"{expression.capitalize()}: {percentage * 100:.2f}%")
+            formatted_percentage = f"{percentage * 100:.2f}%"
+            print(f"{expression.capitalize()}: {formatted_percentage}")
+            video_expression_data[expression.capitalize()] = formatted_percentage
+
+        all_expression_percentages[video_folder] = video_expression_data
         print(f"Finished analyzing {video_folder}")
+
+    return all_expression_percentages
+
 
 def detect_instructor(frame, presence_threshold=0.5):
     # Convert the frame to uint8 and process for model input
@@ -379,6 +391,7 @@ def analyze_youtube_video(video_id):
     # Step 3: Process the video for keyframes and other analyses
     keyframe_data = process_video_for_keyframes(video_path, sampling_rate=1)
     instructor_presence_data = analyze_video_for_instructor('keyframes/' + video_id, 1)
+    instructor_facial_expression_data = analyze_videos_for_facial_expressions(['keyframes/' + video_id])
 
     # Step 4: Fetch and categorize comments
     categorized_comments = get_categorized_comments(video_id)  # Implement using YouTube API and TextBlob
@@ -394,7 +407,7 @@ def analyze_youtube_video(video_id):
         'Timing of each keyframe': keyframe_data.get('sampling_rate', 'NA'),
         'Instructor Presence': instructor_presence_data.get('fraction_visible', 'NA'),
         'The total time when the instructor is present (mm:ss)': instructor_presence_data.get('total_time_present', 'NA'),
-        'Body movement (Y/N)':'NA',
+        'Facial Expression': instructor_facial_expression_data.get('keyframes/' + video_id, 'NA'),
         'Use of Slides (mm:ss)':'NA', 
         'Use of Blackboard (mm:ss)': 'NA',
         'Average fraction of text on slides':'NA',
